@@ -32,6 +32,59 @@ function formatTooltipDate(value) {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+const HISTORY_CACHE_PREFIX = "chess-rapid-history-v3";
+
+function getUtcRefreshKey(now = new Date()) {
+  return now.toISOString().slice(0, 10);
+}
+
+function getMonthUrlsFromJoined(username, joinedEpoch) {
+  if (!Number.isFinite(joinedEpoch)) return [];
+
+  const start = new Date(joinedEpoch * 1000);
+  const current = new Date();
+  const urls = [];
+
+  let year = start.getUTCFullYear();
+  let month = start.getUTCMonth() + 1;
+
+  const endYear = current.getUTCFullYear();
+  const endMonth = current.getUTCMonth() + 1;
+
+  while (year < endYear || (year === endYear && month <= endMonth)) {
+    const mm = String(month).padStart(2, "0");
+    urls.push(`https://api.chess.com/pub/player/${username}/games/${year}/${mm}`);
+
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+
+  return urls;
+}
+
+async function fetchMonthlyArchives(monthUrls, chunkSize = 8) {
+  const chunks = [];
+  for (let i = 0; i < monthUrls.length; i += chunkSize) {
+    chunks.push(monthUrls.slice(i, i + chunkSize));
+  }
+
+  const allGames = [];
+
+  for (const chunk of chunks) {
+    const settled = await Promise.allSettled(chunk.map((url) => fetchJson(url)));
+    for (const result of settled) {
+      if (result.status !== "fulfilled") continue;
+      const games = Array.isArray(result.value?.games) ? result.value.games : [];
+      allGames.push(...games);
+    }
+  }
+
+  return allGames;
+}
+
 async function fetchJson(url) {
   const response = await fetch(url);
   if (!response.ok) {
@@ -41,40 +94,67 @@ async function fetchJson(url) {
 }
 
 async function fetchRapidHistory(username) {
-  const archivesData = await fetchJson(
-    `https://api.chess.com/pub/player/${username}/games/archives`
-  );
-  const archives = (archivesData.archives || []).slice(-12);
+  const cacheKey = `${HISTORY_CACHE_PREFIX}:${username}`;
+  const refreshKey = getUtcRefreshKey();
+
+  try {
+    const cachedRaw = window.localStorage.getItem(cacheKey);
+    if (cachedRaw) {
+      const cached = JSON.parse(cachedRaw);
+      if (cached?.refreshKey === refreshKey && Array.isArray(cached?.history)) {
+        return cached.history;
+      }
+    }
+  } catch {
+    // Ignore cache issues and fetch fresh data.
+  }
+
+  const profileData = await fetchJson(`https://api.chess.com/pub/player/${username}`);
+  const monthUrls = getMonthUrlsFromJoined(username, profileData?.joined);
+
+  const fallbackArchives =
+    monthUrls.length > 0
+      ? monthUrls
+      : (await fetchJson(`https://api.chess.com/pub/player/${username}/games/archives`)).archives || [];
+
+  const monthlyGames = await fetchMonthlyArchives(fallbackArchives);
 
   const historyMap = new Map();
 
-  const lowerUsername = username.toLowerCase();
-  const allArchivesGames = await Promise.all(archives.map((url) => fetchJson(url)));
+  const rapidGames = monthlyGames
+    .filter((game) => game.time_class === "rapid" && game.rated)
+    .sort((a, b) => a.end_time - b.end_time);
 
-  for (const gamesData of allArchivesGames) {
-    const rapidGames = (gamesData.games || [])
-      .filter((game) => game.time_class === "rapid" && game.rated)
-      .sort((a, b) => a.end_time - b.end_time);
+  for (const game of rapidGames) {
+    const isWhite = game.white?.username?.toLowerCase() === username;
+    const isBlack = game.black?.username?.toLowerCase() === username;
+    const color = isWhite ? "white" : isBlack ? "black" : null;
+    if (!color) continue;
 
-    for (const game of rapidGames) {
-      const isWhite = game.white?.username?.toLowerCase() === lowerUsername;
-      const isBlack = game.black?.username?.toLowerCase() === lowerUsername;
-      const color = isWhite ? "white" : isBlack ? "black" : null;
-      if (!color) continue;
+    const rating = game[color]?.rating;
+    if (typeof rating !== "number") continue;
 
-      const rating = game[color]?.rating;
-      if (typeof rating !== "number") continue;
-
-      const date = toIsoDate(game.end_time);
-      const previous = historyMap.get(date);
-      if (!previous || game.end_time > previous.epoch) {
-        historyMap.set(date, { date, rating, epoch: game.end_time });
-      }
+    const date = toIsoDate(game.end_time);
+    const previous = historyMap.get(date);
+    if (!previous || game.end_time > previous.epoch) {
+      historyMap.set(date, { date, rating, epoch: game.end_time });
     }
   }
 
-  return [...historyMap.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const history = [...historyMap.values()].sort((a, b) => a.date.localeCompare(b.date));
+
+  try {
+    window.localStorage.setItem(
+      cacheKey,
+      JSON.stringify({ refreshKey, history, savedAt: new Date().toISOString() })
+    );
+  } catch {
+    // Ignore cache write issues.
+  }
+
+  return history;
 }
+
 
 function mergeSeries(seriesByUser) {
   const allDates = new Set();
@@ -109,8 +189,7 @@ function mergeSeries(seriesByUser) {
 function nextMidnightDelay() {
   const now = new Date();
   const next = new Date(now);
-  next.setDate(next.getDate() + 1);
-  next.setHours(0, 0, 10, 0);
+  next.setHours(24, 0, 10, 0);
   return Math.max(1000, next.getTime() - now.getTime());
 }
 
