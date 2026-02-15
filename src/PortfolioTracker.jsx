@@ -16,6 +16,14 @@ const PLAYERS = [
   { username: "jessicasimian", label: "Jessica", color: "#ff3d7f", areaOpacity: 0.24 },
 ];
 
+const TIMEFRAMES = [
+  { key: "1m", label: "1M", months: 1 },
+  { key: "3m", label: "3M", months: 3 },
+  { key: "6m", label: "6M", months: 6 },
+  { key: "1y", label: "1Y", months: 12 },
+  { key: "all", label: "All", months: null },
+];
+
 function toIsoDate(epochSeconds) {
   return new Date(epochSeconds * 1000).toISOString().slice(0, 10);
 }
@@ -318,6 +326,7 @@ export default function PortfolioTracker() {
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState(null);
   const [hiddenPlayers, setHiddenPlayers] = useState(new Set());
+  const [timeframe, setTimeframe] = useState("all");
 
   const loadAllData = useCallback(async () => {
     setLoading(true);
@@ -384,13 +393,41 @@ export default function PortfolioTracker() {
   const chartData = useMemo(() => mergeSeries(seriesByUser), [seriesByUser]);
   const showSkeleton = loading && chartData.length === 0;
 
+  const timeframeData = useMemo(() => {
+    if (timeframe === "all" || chartData.length === 0) {
+      return chartData;
+    }
+
+    const selected = TIMEFRAMES.find((option) => option.key === timeframe);
+    if (!selected?.months) {
+      return chartData;
+    }
+
+    const cutoffDate = new Date();
+    cutoffDate.setHours(0, 0, 0, 0);
+    cutoffDate.setMonth(cutoffDate.getMonth() - selected.months);
+    const cutoffKey = cutoffDate.toISOString().slice(0, 10);
+
+    const startIndex = chartData.findIndex((row) => row.date >= cutoffKey);
+    if (startIndex === -1) {
+      return chartData.slice(-1);
+    }
+
+    const sliced = chartData.slice(startIndex);
+    if (startIndex > 0) {
+      sliced.unshift({ ...chartData[startIndex - 1], date: cutoffKey });
+    }
+
+    return sliced;
+  }, [chartData, timeframe]);
+
   const activePlayers = useMemo(
     () => PLAYERS.filter((player) => !hiddenPlayers.has(player.username)),
     [hiddenPlayers]
   );
 
   const chartDataForView = useMemo(() => {
-    return chartData.map((row) => {
+    return timeframeData.map((row) => {
       const next = { ...row };
       for (const player of PLAYERS) {
         if (hiddenPlayers.has(player.username)) {
@@ -399,7 +436,7 @@ export default function PortfolioTracker() {
       }
       return next;
     });
-  }, [chartData, hiddenPlayers]);
+  }, [timeframeData, hiddenPlayers]);
 
   const togglePlayer = useCallback((username) => {
     setHiddenPlayers((prev) => {
@@ -468,6 +505,21 @@ export default function PortfolioTracker() {
         </section>
 
         <section className="chart-panel">
+          <div className="timeframe-chips" role="group" aria-label="Select timeframe">
+            {TIMEFRAMES.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                className={`timeframe-chip ${timeframe === option.key ? "active" : ""}`}
+                onClick={() => setTimeframe(option.key)}
+                disabled={showSkeleton}
+                aria-pressed={timeframe === option.key}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
           <div className="player-chips" role="group" aria-label="Toggle players">
             {PLAYERS.map((player) => {
               const hidden = hiddenPlayers.has(player.username);
