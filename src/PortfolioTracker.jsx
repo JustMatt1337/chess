@@ -11,7 +11,7 @@ import {
 } from "recharts";
 
 const PLAYERS = [
-  { username: "jstmtt", label: "You", color: "#43B0F1", areaOpacity: 0.22 },
+  { username: "jstmtt", label: "Matt", color: "#43B0F1", areaOpacity: 0.22 },
   { username: "addiprice03", label: "Addi", color: "#39d98a", areaOpacity: 0.2 },
   { username: "jessicasimian", label: "Jessica", color: "#ff3d7f", areaOpacity: 0.24 },
 ];
@@ -44,19 +44,21 @@ async function fetchRapidHistory(username) {
   const archivesData = await fetchJson(
     `https://api.chess.com/pub/player/${username}/games/archives`
   );
-  const archives = archivesData.archives || [];
+  const archives = (archivesData.archives || []).slice(-12);
 
   const historyMap = new Map();
 
-  for (const archiveUrl of archives) {
-    const gamesData = await fetchJson(archiveUrl);
+  const lowerUsername = username.toLowerCase();
+  const allArchivesGames = await Promise.all(archives.map((url) => fetchJson(url)));
+
+  for (const gamesData of allArchivesGames) {
     const rapidGames = (gamesData.games || [])
       .filter((game) => game.time_class === "rapid" && game.rated)
       .sort((a, b) => a.end_time - b.end_time);
 
     for (const game of rapidGames) {
-      const isWhite = game.white?.username?.toLowerCase() === username;
-      const isBlack = game.black?.username?.toLowerCase() === username;
+      const isWhite = game.white?.username?.toLowerCase() === lowerUsername;
+      const isBlack = game.black?.username?.toLowerCase() === lowerUsername;
       const color = isWhite ? "white" : isBlack ? "black" : null;
       if (!color) continue;
 
@@ -107,7 +109,8 @@ function mergeSeries(seriesByUser) {
 function nextMidnightDelay() {
   const now = new Date();
   const next = new Date(now);
-  next.setHours(24, 0, 10, 0);
+  next.setDate(next.getDate() + 1);
+  next.setHours(0, 0, 10, 0);
   return Math.max(1000, next.getTime() - now.getTime());
 }
 
@@ -162,6 +165,42 @@ function AnimatedNumber({ value, duration = 1200 }) {
   return Math.round(displayValue).toLocaleString();
 }
 
+
+
+function CustomTooltip({ active, label, payload }) {
+  if (!active || !Array.isArray(payload) || payload.length === 0) return null;
+
+  const deduped = [];
+  const seen = new Set();
+
+  payload.forEach((item) => {
+    const key = item?.dataKey;
+    if (!key || seen.has(key)) return;
+    if (item?.value == null) return;
+    seen.add(key);
+
+    const player = PLAYERS.find((entry) => entry.username === key);
+    deduped.push({
+      key,
+      color: item?.color || player?.color || "#e5e7eb",
+      label: player?.label || item?.name || key,
+      value: item.value,
+    });
+  });
+
+  if (deduped.length === 0) return null;
+
+  return (
+    <div style={{ background: "#111827", border: "1px solid #293142", padding: "10px 12px" }}>
+      <div style={{ color: "#d1d5db", marginBottom: 6 }}>{formatTooltipDate(label)}</div>
+      {deduped.map((entry) => (
+        <div key={entry.key} style={{ color: entry.color, fontWeight: 700, marginBottom: 4 }}>
+          {entry.label}: {entry.value}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function StatCard({ title, value, subtitle, color }) {
   return (
@@ -367,11 +406,7 @@ export default function PortfolioTracker() {
                 stroke="#93A4BA"
               />
               <YAxis stroke="#93A4BA" domain={[0, "dataMax + 40"]} />
-              <Tooltip
-                labelFormatter={formatTooltipDate}
-                contentStyle={{ background: "#111827", border: "1px solid #293142" }}
-                labelStyle={{ color: "#d1d5db" }}
-              />
+              <Tooltip content={<CustomTooltip />} />
               {activePlayers.map((player) => (
                 <Area
                   key={`${player.username}-area`}
