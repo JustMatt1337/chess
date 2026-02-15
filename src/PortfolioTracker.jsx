@@ -44,7 +44,7 @@ async function fetchRapidHistory(username) {
   const archivesData = await fetchJson(
     `https://api.chess.com/pub/player/${username}/games/archives`
   );
-  const archives = archivesData.archives || [];
+  const archives = (archivesData.archives || []).slice(-12);
 
   const historyMap = new Map();
 
