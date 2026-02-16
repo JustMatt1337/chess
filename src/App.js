@@ -1,5 +1,5 @@
-import PortfolioTracker from "./PortfolioTracker";
+import Chess from "./Chess";
 
 export default function App() {
-  return <PortfolioTracker />;
+  return <Chess />;
 }
