@@ -329,6 +329,8 @@ export default function Chess() {
   const [hiddenPlayers, setHiddenPlayers] = useState(new Set());
   const [timeframe, setTimeframe] = useState("all");
   const [chartAnimDuration, setChartAnimDuration] = useState(0);
+  const chartContainerRef = useRef(null);
+  const brushInteractionTimeoutRef = useRef(null);
 
   const loadAllData = useCallback(async () => {
     setLoading(true);
@@ -399,6 +401,34 @@ export default function Chess() {
     }, 1500);
     return () => clearTimeout(timer);
   }, [timeframe, hiddenPlayers]);
+
+  useEffect(() => {
+    const handleBrushInteraction = () => {
+      setChartAnimDuration(1400);
+
+      if (brushInteractionTimeoutRef.current) {
+        clearTimeout(brushInteractionTimeoutRef.current);
+      }
+
+      brushInteractionTimeoutRef.current = setTimeout(() => {
+        setChartAnimDuration(0);
+      }, 1500);
+    };
+
+    const container = chartContainerRef.current;
+    if (!container) return;
+
+    container.addEventListener("mousedown", handleBrushInteraction);
+    container.addEventListener("touchstart", handleBrushInteraction);
+
+    return () => {
+      container.removeEventListener("mousedown", handleBrushInteraction);
+      container.removeEventListener("touchstart", handleBrushInteraction);
+      if (brushInteractionTimeoutRef.current) {
+        clearTimeout(brushInteractionTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const chartData = useMemo(() => mergeSeries(seriesByUser), [seriesByUser]);
   const showSkeleton = loading && chartData.length === 0;
@@ -593,7 +623,8 @@ export default function Chess() {
           {showSkeleton ? (
             <ChartSkeleton />
           ) : (
-            <ResponsiveContainer width="100%" height={560}>
+            <div ref={chartContainerRef}>
+              <ResponsiveContainer width="100%" height={560}>
               <ComposedChart data={chartDataForView} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
                 <defs>
                   {activePlayers.map((player) => (
@@ -679,6 +710,7 @@ export default function Chess() {
                 ))}
               </ComposedChart>
             </ResponsiveContainer>
+            </div>
           )}
         </section>
 
