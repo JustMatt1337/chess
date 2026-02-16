@@ -10,7 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-
+import { fetchJson, fetchRapidHistory, fetchGamesBetween } from "./api/chessApi";
 import { fetchJson, fetchRapidHistory } from "./api/chessApi";
 import { PLAYERS, TIMEFRAMES } from "./constants/chessConfig";
 import {
@@ -273,6 +273,25 @@ export default function Chess() {
   const chartContainerRef = useRef(null);
   const chartAnimTimeoutRef = useRef(null);
   const hasInteractionAnimationMountedRef = useRef(false);
+  // ... existing state ...
+  const [h2hGames, setH2hGames] = useState([]);
+  const [h2hLoading, setH2hLoading] = useState(false);
+  // Load Head-to-Head data specifically for Matt vs Addi
+  useEffect(() => {
+    async function loadRivalry() {
+      setH2hLoading(true);
+      try {
+        // Hardcoded usernames for the rivalry
+        const games = await fetchGamesBetween("jstmtt", "addiprice03");
+        setH2hGames(games);
+      } catch (err) {
+        console.error("Failed to load rivalry", err);
+      } finally {
+        setH2hLoading(false);
+      }
+    }
+    loadRivalry();
+  }, []);
 
   const startChartAnimation = useCallback((duration, resetDelay) => {
     setChartAnimDuration(duration);
@@ -524,6 +543,70 @@ export default function Chess() {
                 {option.label}
               </button>
             ))}
+            {/* RIVALRY SECTION */}
+        <section className="rivalry-panel animate-in" style={{ animationDelay: "0.5s", marginTop: 24 }}>
+          <div className="rivalry-header">
+            <h3>⚔️ Rivalry: Matt vs Addi</h3>
+            <div className="rivalry-score">
+               {/* Matt Wins */}
+               <span style={{ color: "#43B0F1" }}>
+                 {h2hGames.filter(g => 
+                   (g.white.username.toLowerCase() === "jstmtt" && g.white.result === "win") || 
+                   (g.black.username.toLowerCase() === "jstmtt" && g.black.result === "win")
+                 ).length} Wins
+               </span>
+               <span className="score-divider">-</span>
+               {/* Draws */}
+               <span style={{ color: "#9ca3af" }}>
+                 {h2hGames.filter(g => {
+                    const res = g.white.result;
+                    return res === "agreed" || res === "repetition" || res === "stalemate" || res === "insufficient" || res === "50move";
+                 }).length} Draws
+               </span>
+               <span className="score-divider">-</span>
+               {/* Addi Wins */}
+               <span style={{ color: "#39d98a" }}>
+                 {h2hGames.filter(g => 
+                   (g.white.username.toLowerCase() === "addiprice03" && g.white.result === "win") || 
+                   (g.black.username.toLowerCase() === "addiprice03" && g.black.result === "win")
+                 ).length} Wins
+               </span>
+            </div>
+          </div>
+
+          <div className="rivalry-list">
+            {h2hLoading ? (
+              <div style={{ padding: 20, textAlign: "center", color: "#64748b" }}>Finding games...</div>
+            ) : h2hGames.length === 0 ? (
+              <div style={{ padding: 20, textAlign: "center", color: "#64748b" }}>No rapid rated games found yet!</div>
+            ) : (
+              h2hGames.map((game) => {
+                // Determine Winner Logic
+                const matt = "jstmtt";
+                const isMattWhite = game.white.username.toLowerCase() === matt;
+                const mattResult = isMattWhite ? game.white.result : game.black.result;
+                
+                let winner = "addi";
+                if (mattResult === "win") winner = "matt";
+                else if (["agreed", "repetition", "stalemate", "insufficient", "timevsinsufficient", "50move"].includes(mattResult)) winner = "draw";
+
+                return (
+                  <a key={game.url} href={game.url} target="_blank" rel="noreferrer" className={`rivalry-card winner-${winner}`}>
+                    <div className="rivalry-date">{formatShortDate(toIsoDate(game.end_time))}</div>
+                    <div className="rivalry-result">
+                      {winner === "matt" && <span style={{color: "#43B0F1"}}>Matt Won</span>}
+                      {winner === "addi" && <span style={{color: "#39d98a"}}>Addi Won</span>}
+                      {winner === "draw" && <span style={{color: "#9ca3af"}}>Draw</span>}
+                    </div>
+                    <div className="rivalry-icon">
+                      {winner === "matt" ? "👑" : winner === "addi" ? "💀" : "🤝"}
+                    </div>
+                  </a>
+                );
+              })
+            )}
+          </div>
+        </section>
           </div>
 
           <div className="player-chips" role="group" aria-label="Toggle players">
