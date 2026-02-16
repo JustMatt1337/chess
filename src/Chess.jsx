@@ -4,7 +4,6 @@ import {
   Brush,
   ComposedChart,
   Line,
-  LineChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -614,19 +613,19 @@ export default function PortfolioTracker() {
                   tickFormatter={formatShortDate}
                   travellerWidth={8}
                 >
-                  <LineChart>
+                  <ComposedChart>
                     {activePlayers.map((player) => (
                       <Line
                         key={player.username}
                         type="monotone"
                         dataKey={player.username}
                         stroke={player.color}
-                        strokeWidth={1}
+                        strokeWidth={1.5}
                         dot={false}
                         isAnimationActive={false}
                       />
                     ))}
-                  </LineChart>
+                  </ComposedChart>
                 </Brush>
 
                 {activePlayers.map((player) => (
