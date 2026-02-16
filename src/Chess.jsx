@@ -11,189 +11,15 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const PLAYERS = [
-  { username: "jstmtt", label: "Matt", color: "#43B0F1", areaOpacity: 0.22 },
-  { username: "addiprice03", label: "Addi", color: "#39d98a", areaOpacity: 0.2 },
-  { username: "jessicasimian", label: "Jessica", color: "#ff3d7f", areaOpacity: 0.24 },
-];
-
-const TIMEFRAMES = [
-  { key: "1m", label: "1M", months: 1 },
-  { key: "3m", label: "3M", months: 3 },
-  { key: "6m", label: "6M", months: 6 },
-  { key: "1y", label: "1Y", months: 12 },
-  { key: "all", label: "All", months: null },
-];
-
-function toIsoDate(epochSeconds) {
-  return new Date(epochSeconds * 1000).toISOString().slice(0, 10);
-}
-
-function formatShortDate(value) {
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
-}
-
-function formatTooltipDate(value) {
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-const HISTORY_CACHE_PREFIX = "chess-rapid-history-v3";
-
-function getUtcRefreshKey(now = new Date()) {
-  return now.toISOString().slice(0, 10);
-}
-
-function getMonthUrlsFromJoined(username, joinedEpoch) {
-  if (!Number.isFinite(joinedEpoch)) return [];
-
-  const start = new Date(joinedEpoch * 1000);
-  const current = new Date();
-  const urls = [];
-
-  let year = start.getUTCFullYear();
-  let month = start.getUTCMonth() + 1;
-
-  const endYear = current.getUTCFullYear();
-  const endMonth = current.getUTCMonth() + 1;
-
-  while (year < endYear || (year === endYear && month <= endMonth)) {
-    const mm = String(month).padStart(2, "0");
-    urls.push(`https://api.chess.com/pub/player/${username}/games/${year}/${mm}`);
-
-    month += 1;
-    if (month > 12) {
-      month = 1;
-      year += 1;
-    }
-  }
-
-  return urls;
-}
-
-async function fetchMonthlyArchives(monthUrls, chunkSize = 8) {
-  const chunks = [];
-  for (let i = 0; i < monthUrls.length; i += chunkSize) {
-    chunks.push(monthUrls.slice(i, i + chunkSize));
-  }
-
-  const allGames = [];
-
-  for (const chunk of chunks) {
-    const settled = await Promise.allSettled(chunk.map((url) => fetchJson(url)));
-    for (const result of settled) {
-      if (result.status !== "fulfilled") continue;
-      const games = Array.isArray(result.value?.games) ? result.value.games : [];
-      allGames.push(...games);
-    }
-  }
-
-  return allGames;
-}
-
-async function fetchJson(url) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Request failed (${response.status}) for ${url}`);
-  }
-  return response.json();
-}
-
-async function fetchRapidHistory(username) {
-  const cacheKey = `${HISTORY_CACHE_PREFIX}:${username}`;
-  const refreshKey = getUtcRefreshKey();
-
-  try {
-    const cachedRaw = window.localStorage.getItem(cacheKey);
-    if (cachedRaw) {
-      const cached = JSON.parse(cachedRaw);
-      if (cached?.refreshKey === refreshKey && Array.isArray(cached?.history)) {
-        return cached.history;
-      }
-    }
-  } catch {
-    // Ignore cache issues and fetch fresh data.
-  }
-
-  const profileData = await fetchJson(`https://api.chess.com/pub/player/${username}`);
-  const monthUrls = getMonthUrlsFromJoined(username, profileData?.joined);
-
-  const fallbackArchives =
-    monthUrls.length > 0
-      ? monthUrls
-      : (await fetchJson(`https://api.chess.com/pub/player/${username}/games/archives`)).archives || [];
-
-  const monthlyGames = await fetchMonthlyArchives(fallbackArchives);
-
-  const historyMap = new Map();
-
-  const rapidGames = monthlyGames
-    .filter((game) => game.time_class === "rapid" && game.rated)
-    .sort((a, b) => a.end_time - b.end_time);
-
-  for (const game of rapidGames) {
-    const isWhite = game.white?.username?.toLowerCase() === username;
-    const isBlack = game.black?.username?.toLowerCase() === username;
-    const color = isWhite ? "white" : isBlack ? "black" : null;
-    if (!color) continue;
-
-    const rating = game[color]?.rating;
-    if (typeof rating !== "number") continue;
-
-    const date = toIsoDate(game.end_time);
-    const previous = historyMap.get(date);
-    if (!previous || game.end_time > previous.epoch) {
-      historyMap.set(date, { date, rating, epoch: game.end_time });
-    }
-  }
-
-  const history = [...historyMap.values()].sort((a, b) => a.date.localeCompare(b.date));
-
-  try {
-    window.localStorage.setItem(
-      cacheKey,
-      JSON.stringify({ refreshKey, history, savedAt: new Date().toISOString() })
-    );
-  } catch {
-    // Ignore cache write issues.
-  }
-
-  return history;
-}
-
-
-function mergeSeries(seriesByUser) {
-  const allDates = new Set();
-  Object.values(seriesByUser).forEach((entries) => {
-    entries.forEach((entry) => allDates.add(entry.date));
-  });
-
-  const sortedDates = [...allDates].sort();
-  const pointerByUser = Object.fromEntries(PLAYERS.map((p) => [p.username, 0]));
-  const lastSeen = {};
-
-  return sortedDates.map((date) => {
-    const row = { date };
-
-    for (const player of PLAYERS) {
-      const series = seriesByUser[player.username] || [];
-      let pointer = pointerByUser[player.username];
-
-      while (pointer < series.length && series[pointer].date <= date) {
-        lastSeen[player.username] = series[pointer].rating;
-        pointer += 1;
-      }
-
-      pointerByUser[player.username] = pointer;
-      row[player.username] = lastSeen[player.username] ?? null;
-    }
-
-    return row;
-  });
-}
+import { fetchJson, fetchRapidHistory } from "./api/chessApi";
+import { PLAYERS, TIMEFRAMES } from "./constants/chessConfig";
+import {
+  buildChartDataForView,
+  calculateYAxisDomain,
+  mergeSeries,
+  sliceSeriesByTimeframe,
+} from "./utils/series";
+import { formatShortDate, formatTooltipDate } from "./utils/formatting";
 
 function nextMidnightDelay() {
   const now = new Date();
@@ -430,36 +256,13 @@ export default function Chess() {
     };
   }, []);
 
-  const chartData = useMemo(() => mergeSeries(seriesByUser), [seriesByUser]);
+  const chartData = useMemo(() => mergeSeries(PLAYERS, seriesByUser), [seriesByUser]);
   const showSkeleton = loading && chartData.length === 0;
 
-  const timeframeData = useMemo(() => {
-    if (timeframe === "all" || chartData.length === 0) {
-      return chartData;
-    }
-
-    const selected = TIMEFRAMES.find((option) => option.key === timeframe);
-    if (!selected?.months) {
-      return chartData;
-    }
-
-    const cutoffDate = new Date();
-    cutoffDate.setHours(0, 0, 0, 0);
-    cutoffDate.setMonth(cutoffDate.getMonth() - selected.months);
-    const cutoffKey = cutoffDate.toISOString().slice(0, 10);
-
-    const startIndex = chartData.findIndex((row) => row.date >= cutoffKey);
-    if (startIndex === -1) {
-      return chartData.slice(-1);
-    }
-
-    const sliced = chartData.slice(startIndex);
-    if (startIndex > 0) {
-      sliced.unshift({ ...chartData[startIndex - 1], date: cutoffKey });
-    }
-
-    return sliced;
-  }, [chartData, timeframe]);
+  const timeframeData = useMemo(
+    () => sliceSeriesByTimeframe(chartData, timeframe, TIMEFRAMES),
+    [chartData, timeframe]
+  );
 
   const activePlayers = useMemo(
     () => PLAYERS.filter((player) => !hiddenPlayers.has(player.username)),
@@ -469,39 +272,15 @@ export default function Chess() {
   const themePlayer = activePlayers[0] || PLAYERS[0];
   const themeAccent = themePlayer.color;
 
-  const chartDataForView = useMemo(() => {
-    return timeframeData.map((row) => {
-      const next = { ...row };
-      for (const player of PLAYERS) {
-        if (hiddenPlayers.has(player.username)) {
-          next[player.username] = null;
-        }
-      }
-      return next;
-    });
-  }, [timeframeData, hiddenPlayers]);
+  const chartDataForView = useMemo(
+    () => buildChartDataForView(timeframeData, PLAYERS, hiddenPlayers),
+    [timeframeData, hiddenPlayers]
+  );
 
-  const yAxisDomain = useMemo(() => {
-    const values = [];
-    chartDataForView.forEach((row) => {
-      activePlayers.forEach((player) => {
-        const value = row[player.username];
-        if (typeof value === "number") {
-          values.push(value);
-        }
-      });
-    });
-
-    if (!values.length) return [0, 2000];
-
-    const minValue = Math.min(...values);
-    const maxValue = Math.max(...values);
-    const lower = Math.max(0, Math.floor((minValue - 40) / 100) * 100);
-    let upper = Math.ceil((maxValue + 40) / 100) * 100;
-    if (upper <= lower) upper = lower + 100;
-
-    return [lower, upper];
-  }, [chartDataForView, activePlayers]);
+  const yAxisDomain = useMemo(
+    () => calculateYAxisDomain(chartDataForView, activePlayers),
+    [chartDataForView, activePlayers]
+  );
 
   const lastPointIndexByPlayer = useMemo(() => {
     const indexes = {};
