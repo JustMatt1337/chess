@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
+  Brush,
   ComposedChart,
   Line,
   XAxis,
@@ -319,7 +320,7 @@ function ChartSkeleton() {
   );
 }
 
-export default function Chess() {
+export default function PortfolioTracker() {
   const [seriesByUser, setSeriesByUser] = useState({});
   const [profiles, setProfiles] = useState({});
   const [loading, setLoading] = useState(true);
@@ -583,8 +584,8 @@ export default function Chess() {
           {showSkeleton ? (
             <ChartSkeleton />
           ) : (
-            <ResponsiveContainer width="100%" height={500}>
-              <ComposedChart data={chartDataForView} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+            <ResponsiveContainer width="100%" height={560}>
+              <ComposedChart data={chartDataForView} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
                 <defs>
                   {activePlayers.map((player) => (
                     <linearGradient key={player.username} id={`fill-${player.username}`} x1="0" y1="0" x2="0" y2="1">
@@ -603,6 +604,30 @@ export default function Chess() {
                 />
                 <YAxis stroke="#93A4BA" domain={yAxisDomain} />
                 <Tooltip content={<CustomTooltip />} />
+                
+                <Brush
+                  dataKey="date"
+                  height={40}
+                  stroke={themeAccent}
+                  fill="rgba(15, 23, 42, 0.6)"
+                  tickFormatter={formatShortDate}
+                  travellerWidth={8}
+                >
+                  <ComposedChart>
+                    {activePlayers.map((player) => (
+                      <Line
+                        key={player.username}
+                        type="monotone"
+                        dataKey={player.username}
+                        stroke={player.color}
+                        strokeWidth={1.5}
+                        dot={false}
+                        isAnimationActive={false}
+                      />
+                    ))}
+                  </ComposedChart>
+                </Brush>
+
                 {activePlayers.map((player) => (
                   <Area
                     key={`${player.username}-area`}
