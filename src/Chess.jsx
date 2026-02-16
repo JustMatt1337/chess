@@ -363,7 +363,7 @@ export default function Chess() {
                   <StatCard
                     key={player.username}
                     title={`${player.label} (@${player.username})`}
-                    value={latest ? latest.rating : "—"}
+                    value={profile.current ?? (latest ? latest.rating : "—")}
                     subtitle={
                       latest
                         ? `Best ${profile.best ?? "—"} • Net ${gain >= 0 ? "+" : ""}${
