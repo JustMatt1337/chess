@@ -124,3 +124,39 @@ export async function fetchRapidHistory(username) {
 
   return history;
 }
+// ... existing imports and code ...
+
+/**
+ * Fetches all games played between two specific usernames.
+ */
+export async function fetchGamesBetween(player1, player2) {
+  const p1 = player1.toLowerCase();
+  const p2 = player2.toLowerCase();
+  
+  // 1. Get archives for Player 1 (Matt)
+  const profileData = await fetchJson(`https://api.chess.com/pub/player/${p1}`);
+  
+  // Reuse existing logic to get month URLs
+  const monthUrls = getMonthUrlsFromJoined(p1, profileData?.joined);
+  
+  const archives = monthUrls.length > 0 
+    ? monthUrls 
+    : (await fetchJson(`https://api.chess.com/pub/player/${p1}/games/archives`)).archives || [];
+
+  // 2. Fetch all games from those archives
+  const allGames = await fetchMonthlyArchives(archives);
+
+  // 3. Filter for games ONLY against Player 2 (Addi)
+  const mutualGames = allGames.filter(game => {
+    // Only count Rapid & Rated games
+    if (game.time_class !== 'rapid' || !game.rated) return false;
+
+    const white = game.white.username.toLowerCase();
+    const black = game.black.username.toLowerCase();
+
+    return (white === p1 && black === p2) || (white === p2 && black === p1);
+  });
+
+  // 4. Sort by newest first
+  return mutualGames.sort((a, b) => b.end_time - a.end_time);
+}
