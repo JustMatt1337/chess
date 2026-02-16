@@ -11,7 +11,6 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { fetchJson, fetchRapidHistory, fetchGamesBetween } from "./api/chessApi";
-import { fetchJson, fetchRapidHistory } from "./api/chessApi";
 import { PLAYERS, TIMEFRAMES } from "./constants/chessConfig";
 import {
   buildChartDataForView,
