@@ -10,6 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import "./styles.css";
 import { fetchJson, fetchRapidHistory, fetchGamesBetween } from "./api/chessApi";
 import { PLAYERS, TIMEFRAMES } from "./constants/chessConfig";
 import {
