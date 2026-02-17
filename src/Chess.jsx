@@ -10,7 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import "./styles.css";
+import "./styles.css"; // Keeping your styles import!
 import { fetchJson, fetchRapidHistory, fetchGamesBetween } from "./api/chessApi";
 import { PLAYERS, TIMEFRAMES } from "./constants/chessConfig";
 import {
@@ -28,7 +28,6 @@ const DATA_REFRESH_ANIM_RESET_DELAY = 3000;
 
 // --- HELPERS ---
 
-// Fix for "Unknown Date" crash: Define this right here
 function toIsoDate(epochSeconds) {
   if (!epochSeconds) return new Date().toISOString().slice(0, 10);
   return new Date(epochSeconds * 1000).toISOString().slice(0, 10);
@@ -710,7 +709,7 @@ export default function Chess() {
                  {h2hGames.filter(g => {
                     if (!g.white) return false;
                     const res = g.white.result;
-                    return ["agreed", "repetition", "stalemate", "insufficient", "50move", "timevsinsufficient"].includes(res);
+                    return ["agreed", "repetition", "stalemate", "insufficient", "timevsinsufficient", "50move"].includes(res);
                  }).length} Draws
                </span>
                <span className="score-divider">-</span>
