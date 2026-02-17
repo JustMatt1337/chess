@@ -10,7 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import "./styles.css"; // Keeping your styles import!
+import "./styles.css";
 import { fetchJson, fetchRapidHistory, fetchGamesBetween } from "./api/chessApi";
 import { PLAYERS, TIMEFRAMES } from "./constants/chessConfig";
 import {
@@ -26,8 +26,6 @@ const INTERACTION_ANIM_RESET_DELAY = 1500;
 const DATA_REFRESH_ANIM_DURATION = 2800;
 const DATA_REFRESH_ANIM_RESET_DELAY = 3000;
 
-// --- HELPERS ---
-
 function toIsoDate(epochSeconds) {
   if (!epochSeconds) return new Date().toISOString().slice(0, 10);
   return new Date(epochSeconds * 1000).toISOString().slice(0, 10);
@@ -39,8 +37,6 @@ function nextMidnightDelay() {
   next.setHours(24, 0, 10, 0);
   return Math.max(1000, next.getTime() - now.getTime());
 }
-
-// --- COMPONENTS ---
 
 function AnimatedNumber({ value, duration = 1200 }) {
   const [displayValue, setDisplayValue] = useState(0);
