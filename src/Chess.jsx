@@ -345,10 +345,14 @@ export default function Chess() {
       const entries = await Promise.all(
         PLAYERS.map(async (player) => {
           
+          // Cache Buster: A unique timestamp to force the browser to fetch fresh data
+          const cb = Date.now(); 
+          
           const historyPromise = fetchRapidHistory(player.username);
-          const statsPromise = fetchJson(`https://api.chess.com/pub/player/${player.username}/stats`);
-          const profilePromise = fetchJson(`https://api.chess.com/pub/player/${player.username}`);
-          const onlinePromise = fetchJson(`https://api.chess.com/pub/player/${player.username}/is-online`)
+          // Append the cache buster to the live data endpoints
+          const statsPromise = fetchJson(`https://api.chess.com/pub/player/${player.username}/stats?cb=${cb}`);
+          const profilePromise = fetchJson(`https://api.chess.com/pub/player/${player.username}?cb=${cb}`);
+          const onlinePromise = fetchJson(`https://api.chess.com/pub/player/${player.username}/is-online?cb=${cb}`)
             .catch(() => ({ online: false }));
 
           const [rawHistory, stats, profileData, onlineStatus] = await Promise.all([
@@ -374,16 +378,11 @@ export default function Chess() {
           }
 
           // --- 2. SMART ONLINE DETECTION ---
-          // Because Chess.com's /is-online API lags by ~5 minutes, 
-          // we check their exact last_online timestamp as a fallback.
           const nowSeconds = Math.floor(Date.now() / 1000);
           const lastOnlineSeconds = profileData?.last_online || 0;
-          // If they were online in the last 10 minutes (600 seconds), assume they are online/playing
+          // If they were active anywhere on the site in the last 10 mins (600s), show them as Online
           const isRecentlyOnline = (nowSeconds - lastOnlineSeconds) < 600;
-          
-          // Combine the official status with our smart fallback
           const isActuallyOnline = Boolean(onlineStatus?.online) || isRecentlyOnline;
-
 
           const historyBest = history.reduce(
             (best, point) => Math.max(best, point.rating),
@@ -402,7 +401,7 @@ export default function Chess() {
                 current: currentRating,
                 best: Number.isFinite(bestRating) ? bestRating : null,
                 avatar: profileData?.avatar || null,
-                online: isActuallyOnline, // <-- Applied the Smart Status here
+                online: isActuallyOnline,
                 record: {
                   win: stats.chess_rapid?.record?.win ?? 0,
                   loss: stats.chess_rapid?.record?.loss ?? 0,
