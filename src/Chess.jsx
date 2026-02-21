@@ -350,12 +350,30 @@ export default function Chess() {
           const onlinePromise = fetchJson(`https://api.chess.com/pub/player/${player.username}/is-online`)
             .catch(() => ({ online: false }));
 
-          const [history, stats, profileData, onlineStatus] = await Promise.all([
+          const [rawHistory, stats, profileData, onlineStatus] = await Promise.all([
             historyPromise,
             statsPromise,
             profilePromise,
             onlinePromise,
           ]);
+
+          // --- FIX: INJECT LIVE RATING INTO CHART ---
+          const history = [...rawHistory]; 
+          const currentRating = stats.chess_rapid?.last?.rating ?? null;
+          
+          if (currentRating !== null) {
+            const todayDate = new Date().toISOString().slice(0, 10);
+            const lastPoint = history[history.length - 1];
+            
+            // If the last point is already today, just update the number. 
+            // If it's from yesterday, add a brand new point for today.
+            if (lastPoint && lastPoint.date === todayDate) {
+              history[history.length - 1] = { ...lastPoint, rating: currentRating };
+            } else {
+              history.push({ date: todayDate, rating: currentRating, epoch: Math.floor(Date.now() / 1000) });
+            }
+          }
+          // ------------------------------------------
 
           const historyBest = history.reduce(
             (best, point) => Math.max(best, point.rating),
@@ -371,7 +389,7 @@ export default function Chess() {
             {
               history,
               profile: {
-                current: stats.chess_rapid?.last?.rating ?? null,
+                current: currentRating,
                 best: Number.isFinite(bestRating) ? bestRating : null,
                 avatar: profileData?.avatar || null,
                 online: Boolean(onlineStatus?.online),
