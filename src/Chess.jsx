@@ -40,6 +40,38 @@ function nextMidnightDelay() {
   return Math.max(1000, next.getTime() - now.getTime());
 }
 
+async function fetchOnlineStatus(username, bust) {
+  const response = await fetch(`https://api.chess.com/pub/player/${username}/is-online?bust=${bust}`, {
+    cache: "no-store",
+    headers: {
+      Pragma: "no-cache",
+      "Cache-Control": "no-cache",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch online status for ${username}`);
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    const payload = await response.json();
+    return Boolean(payload?.online);
+  }
+
+  const textPayload = (await response.text()).trim().toLowerCase();
+
+  if (textPayload === "true" || textPayload === "1" || textPayload === "online") {
+    return true;
+  }
+
+  if (textPayload === "false" || textPayload === "0" || textPayload === "offline") {
+    return false;
+  }
+
+  return false;
+}
+
 // --- COMPONENTS ---
 
 function AnimatedNumber({ value, duration = 1200 }) {
@@ -355,15 +387,7 @@ export default function Chess() {
           const statsPromise = fetch(`https://api.chess.com/pub/player/${player.username}/stats?bust=${bust}`, { cache: "no-store" }).then(res => res.json());
           const profilePromise = fetch(`https://api.chess.com/pub/player/${player.username}?bust=${bust}`, { cache: "no-store" }).then(res => res.json());
           
-          const onlinePromise = fetch(`https://api.chess.com/pub/player/${player.username}/is-online?bust=${bust}`, { 
-            cache: "no-store",
-            headers: {
-              "Pragma": "no-cache",
-              "Cache-Control": "no-cache"
-            }
-          })
-            .then(res => res.json())
-            .catch(() => ({ online: false }));
+          const onlinePromise = fetchOnlineStatus(player.username, bust).catch(() => false);
 
           const [rawHistory, stats, profileData, onlineStatus] = await Promise.all([
             historyPromise,
@@ -404,7 +428,7 @@ export default function Chess() {
                 current: currentRating,
                 best: Number.isFinite(bestRating) ? bestRating : null,
                 avatar: profileData?.avatar || null,
-                online: Boolean(onlineStatus?.online),
+                online: onlineStatus,
                 record: {
                   win: stats.chess_rapid?.record?.win ?? 0,
                   loss: stats.chess_rapid?.record?.loss ?? 0,
