@@ -345,14 +345,24 @@ export default function Chess() {
       const entries = await Promise.all(
         PLAYERS.map(async (player) => {
           
-          // Cache Buster: A unique timestamp to force the browser to fetch fresh data
-          const cb = Date.now(); 
-          
           const historyPromise = fetchRapidHistory(player.username);
-          // Append the cache buster to the live data endpoints
-          const statsPromise = fetchJson(`https://api.chess.com/pub/player/${player.username}/stats?cb=${cb}`);
-          const profilePromise = fetchJson(`https://api.chess.com/pub/player/${player.username}?cb=${cb}`);
-          const onlinePromise = fetchJson(`https://api.chess.com/pub/player/${player.username}/is-online?cb=${cb}`)
+          
+          // --- NUCLEAR CACHE BYPASS ---
+          // We explicitly tell the browser engine "DO NOT USE CACHE" using { cache: "no-store" }
+          // AND we append a timestamp to defeat Cloudflare/ISPs.
+          const bust = Date.now();
+          
+          const statsPromise = fetch(`https://api.chess.com/pub/player/${player.username}/stats?bust=${bust}`, { cache: "no-store" }).then(res => res.json());
+          const profilePromise = fetch(`https://api.chess.com/pub/player/${player.username}?bust=${bust}`, { cache: "no-store" }).then(res => res.json());
+          
+          const onlinePromise = fetch(`https://api.chess.com/pub/player/${player.username}/is-online?bust=${bust}`, { 
+            cache: "no-store",
+            headers: {
+              "Pragma": "no-cache",
+              "Cache-Control": "no-cache"
+            }
+          })
+            .then(res => res.json())
             .catch(() => ({ online: false }));
 
           const [rawHistory, stats, profileData, onlineStatus] = await Promise.all([
@@ -362,7 +372,7 @@ export default function Chess() {
             onlinePromise,
           ]);
 
-          // --- 1. INJECT LIVE RATING INTO CHART ---
+          // --- INJECT LIVE RATING INTO CHART ---
           const history = [...rawHistory]; 
           const currentRating = stats.chess_rapid?.last?.rating ?? null;
           
@@ -376,13 +386,6 @@ export default function Chess() {
               history.push({ date: todayDate, rating: currentRating, epoch: Math.floor(Date.now() / 1000) });
             }
           }
-
-          // --- 2. SMART ONLINE DETECTION ---
-          const nowSeconds = Math.floor(Date.now() / 1000);
-          const lastOnlineSeconds = profileData?.last_online || 0;
-          // If they were active anywhere on the site in the last 10 mins (600s), show them as Online
-          const isRecentlyOnline = (nowSeconds - lastOnlineSeconds) < 600;
-          const isActuallyOnline = Boolean(onlineStatus?.online) || isRecentlyOnline;
 
           const historyBest = history.reduce(
             (best, point) => Math.max(best, point.rating),
@@ -401,7 +404,7 @@ export default function Chess() {
                 current: currentRating,
                 best: Number.isFinite(bestRating) ? bestRating : null,
                 avatar: profileData?.avatar || null,
-                online: isActuallyOnline,
+                online: Boolean(onlineStatus?.online),
                 record: {
                   win: stats.chess_rapid?.record?.win ?? 0,
                   loss: stats.chess_rapid?.record?.loss ?? 0,
@@ -432,7 +435,6 @@ export default function Chess() {
       setLoading(false);
     }
   }, [startChartAnimation]);
-
   useEffect(() => {
     loadAllData();
   }, [loadAllData]);
